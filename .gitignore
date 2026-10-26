@@ -1,0 +1,12 @@
+.DS_Store
+**/.env
+**/.env*.local
+**/node_modules/
+**/.next/
+**/out/
+**/build/
+**/data/access-users.json
+**/data/google-oauth.json
+**/*.pem
+**/*.tsbuildinfo
+**/next-env.d.ts
