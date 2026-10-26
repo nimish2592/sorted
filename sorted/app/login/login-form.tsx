@@ -67,30 +67,26 @@ function LoginFormInner() {
           </div>
         )}
 
-        {process.env.NEXT_PUBLIC_GOOGLE_SIGNIN === 'true' ? (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              disabled={loading !== null}
-              onClick={onGoogle}
-            >
-              {loading === 'google' ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <GoogleIcon className="mr-2 h-4 w-4" />
-              )}
-              Continue with Google
-            </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          disabled={loading !== null}
+          onClick={onGoogle}
+        >
+          {loading === 'google' ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <GoogleIcon className="mr-2 h-4 w-4" />
+          )}
+          Continue with Google
+        </Button>
 
-            <div className="flex items-center gap-3">
-              <Separator className="flex-1" />
-              <span className="text-xs text-muted-foreground">or</span>
-              <Separator className="flex-1" />
-            </div>
-          </>
-        ) : null}
+        <div className="flex items-center gap-3">
+          <Separator className="flex-1" />
+          <span className="text-xs text-muted-foreground">or</span>
+          <Separator className="flex-1" />
+        </div>
 
         <form onSubmit={onCredentials} className="space-y-4">
           <div className="space-y-2">
@@ -130,8 +126,7 @@ function LoginFormInner() {
         </form>
 
         <p className="text-center text-xs text-muted-foreground">
-          Access is invite-only. Admin:{' '}
-          <span className="font-medium text-foreground">vnslabsai@gmail.com</span>
+          Access is invite-only.
         </p>
       </CardContent>
     </Card>
