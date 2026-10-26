@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, Suspense, useCallback, useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Plus, Shield, Trash2, Cloud, FolderOpen } from 'lucide-react';
@@ -43,6 +43,21 @@ type GoogleStatus = {
 };
 
 export default function SettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading settings…
+        </div>
+      }
+    >
+      <SettingsPageContent />
+    </Suspense>
+  );
+}
+
+function SettingsPageContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const isAdmin = session?.user?.role === 'admin';
