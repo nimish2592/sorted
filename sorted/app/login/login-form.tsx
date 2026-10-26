@@ -17,6 +17,13 @@ const errorMessages: Record<string, string> = {
     'Google Sign-In is not configured. Use email and password for now.',
   CredentialsSignin: 'Invalid email or password.',
   OAuthAccountNotLinked: 'Use the same sign-in method you used before.',
+  Configuration:
+    'Auth is misconfigured on the server. Check NEXTAUTH_URL, NEXTAUTH_SECRET, and Google env vars on Vercel.',
+  OAuthSignin:
+    'Could not start Google sign-in. Check GOOGLE_CLIENT_ID / SECRET on Vercel.',
+  OAuthCallback:
+    'Google callback failed. Add this site’s /api/auth/callback/google to Google Cloud redirect URIs.',
+  Callback: 'Sign-in callback failed. Check NEXTAUTH_URL matches this site.',
   Default: 'Could not sign in. Try again.',
 };
 
@@ -31,7 +38,12 @@ function LoginFormInner() {
   const urlError = useMemo(() => {
     const code = params.get('error');
     if (!code) return null;
-    return errorMessages[code] || errorMessages.Default;
+    const mapped = errorMessages[code] || errorMessages.Default;
+    // Surface unknown NextAuth codes so production misconfig is debuggable
+    if (!errorMessages[code] && code !== 'Default') {
+      return `${mapped} (${code})`;
+    }
+    return mapped;
   }, [params]);
 
   async function onCredentials(e: FormEvent) {

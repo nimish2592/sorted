@@ -19,18 +19,18 @@ const providers: NextAuthOptions['providers'] = [
     async authorize(credentials) {
       const email = credentials?.email?.trim();
       const password = credentials?.password ?? '';
-      if (!email || !password) {
-        throw new Error('Email and password are required.');
+      if (!email || !password) return null;
+      try {
+        const user = await verifyPassword(email, password);
+        if (!user) return null;
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        };
+      } catch {
+        return null;
       }
-      const user = await verifyPassword(email, password);
-      if (!user) {
-        throw new Error('Invalid email or password.');
-      }
-      return {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-      };
     },
   }),
 ];

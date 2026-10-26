@@ -1,27 +1,43 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
 import bcrypt from 'bcryptjs';
 import { ADMIN_EMAIL, isAdminEmail, normalizeEmail } from '@/lib/auth/constants';
 import type { AccessRole, AccessUser, PublicAccessUser } from '@/types/access';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const ACCESS_FILE = path.join(DATA_DIR, 'access-users.json');
-
 type AccessFile = {
   users: AccessUser[];
 };
+
+/** In-memory fallback for serverless (Vercel) when disk is not writable. */
+let memoryStore: AccessFile | null = null;
+
+const LOCAL_FILE = path.join(process.cwd(), 'data', 'access-users.json');
+const TMP_FILE = path.join(os.tmpdir(), 'sorted-access-users.json');
 
 function toPublic(user: AccessUser): PublicAccessUser {
   const { passwordHash: _, ...rest } = user;
   return rest;
 }
 
-async function ensureAdminSeed(users: AccessUser[]): Promise<AccessUser[]> {
+async function buildAdminUser(): Promise<AccessUser> {
   const adminPassword =
     process.env.AUTH_ADMIN_PASSWORD?.trim() || 'SortedAdmin!2026';
-  const existing = users.find((u) => isAdminEmail(u.email));
+  return {
+    id: 'usr_admin',
+    name: 'VNS Labs Admin',
+    email: ADMIN_EMAIL,
+    role: 'admin',
+    passwordHash: await bcrypt.hash(adminPassword, 10),
+    created_at: new Date().toISOString(),
+    created_by: 'system',
+  };
+}
 
+async function ensureAdminSeed(users: AccessUser[]): Promise<AccessUser[]> {
+  const existing = users.find((u) => isAdminEmail(u.email));
   if (existing) {
+    // Keep stored hash, but always force admin role/email
     return users.map((u) =>
       isAdminEmail(u.email)
         ? {
@@ -33,42 +49,60 @@ async function ensureAdminSeed(users: AccessUser[]): Promise<AccessUser[]> {
         : u
     );
   }
-
-  const passwordHash = await bcrypt.hash(adminPassword, 10);
-  return [
-    {
-      id: 'usr_admin',
-      name: 'VNS Labs Admin',
-      email: ADMIN_EMAIL,
-      role: 'admin',
-      passwordHash,
-      created_at: new Date().toISOString(),
-      created_by: 'system',
-    },
-    ...users,
-  ];
+  return [await buildAdminUser(), ...users];
 }
 
-async function readFile(): Promise<AccessFile> {
+async function tryRead(filePath: string): Promise<AccessFile | null> {
   try {
-    const raw = await fs.readFile(ACCESS_FILE, 'utf8');
+    const raw = await fs.readFile(filePath, 'utf8');
     const parsed = JSON.parse(raw) as AccessFile;
-    const users = await ensureAdminSeed(parsed.users ?? []);
-    if (users.length !== (parsed.users?.length ?? 0)) {
-      await writeFile({ users });
-    }
-    return { users };
+    return { users: parsed.users ?? [] };
   } catch {
-    const users = await ensureAdminSeed([]);
-    const data = { users };
-    await writeFile(data);
-    return data;
+    return null;
   }
 }
 
+async function tryWrite(filePath: string, data: AccessFile): Promise<boolean> {
+  try {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readFile(): Promise<AccessFile> {
+  if (memoryStore) {
+    memoryStore = { users: await ensureAdminSeed(memoryStore.users) };
+    return memoryStore;
+  }
+
+  const fromLocal = await tryRead(LOCAL_FILE);
+  const fromTmp = fromLocal ? null : await tryRead(TMP_FILE);
+  const base = fromLocal || fromTmp || { users: [] };
+  const users = await ensureAdminSeed(base.users);
+  const data = { users };
+
+  // Persist if we can; otherwise keep in memory (Vercel-safe)
+  const wrote =
+    (await tryWrite(LOCAL_FILE, data)) || (await tryWrite(TMP_FILE, data));
+  if (!wrote) {
+    memoryStore = data;
+  } else {
+    memoryStore = data;
+  }
+  return data;
+}
+
 async function writeFile(data: AccessFile): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(ACCESS_FILE, JSON.stringify(data, null, 2), 'utf8');
+  memoryStore = data;
+  const ok =
+    (await tryWrite(LOCAL_FILE, data)) || (await tryWrite(TMP_FILE, data));
+  if (!ok) {
+    // Serverless: memory-only is fine for this request/instance
+    memoryStore = data;
+  }
 }
 
 export async function listAccessUsers(): Promise<PublicAccessUser[]> {
@@ -100,6 +134,19 @@ export async function verifyPassword(
   email: string,
   password: string
 ): Promise<AccessUser | null> {
+  const normalized = normalizeEmail(email);
+
+  // Admin can always sign in with AUTH_ADMIN_PASSWORD even if store is empty
+  if (isAdminEmail(normalized)) {
+    const expected =
+      process.env.AUTH_ADMIN_PASSWORD?.trim() || 'SortedAdmin!2026';
+    if (password === expected) {
+      const user = await findAccessUserByEmail(normalized);
+      if (user) return user;
+      return buildAdminUser();
+    }
+  }
+
   const user = await findAccessUserByEmail(email);
   if (!user?.passwordHash) return null;
   const ok = await bcrypt.compare(password, user.passwordHash);
